@@ -17,8 +17,7 @@ interface IScheduledMinter {
     function nextEpochPoint() external view returns (uint256);
 }
 
-
-
+// Share wrapper contract that controls the RICKS tokens in contract
 contract ShareWrapper {
     using SafeMathUpgradeable for uint256;
     using SafeERC20Upgradeable for IERC20Upgradeable;
@@ -51,12 +50,14 @@ contract ShareWrapper {
     }
 }
 
+// Classic board contract, with upgradeable functionalities
+// Can also be used for voting, eventually in a scenario in which buyouts wanna be contested...
 contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
     using AddressUpgradeable for address;
     using SafeMathUpgradeable for uint256;
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
-    /* ========== DATA STRUCTURES ========== */
+    /* ========== Data Structures ========== */
 
     struct Boardseat {
         uint256 lastSnapshotIndex;
@@ -70,21 +71,20 @@ contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
         uint256 rewardPerShare;
     }
 
-    /* ========== STATE VARIABLES ========== */
+    /* ========== State Variables ========== */
 
     // governance
     address public operator;
 
     // flags
     bool public initialized;
-    address public unirouter;
     address public WETH;
     address public ScheduledMinter;
 
     mapping(address => Boardseat) public directors;
     BoardSnapshot[] public boardHistory;
 
-    /* ========== EVENTS ========== */
+    /* ========== Events ========== */
 
     event Initialized(address indexed executor, uint256 at);
     event Staked(address indexed user, uint256 amount);
@@ -95,7 +95,7 @@ contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
     /* ========== Modifiers =============== */
 
     modifier onlyOperator() {
-        require(operator == msg.sender, "Boardroom: caller is not the operator");
+        require(operator == msg.sender, "Boardroom: caller is not the crem lord");
         _;
     }
 
@@ -119,8 +119,8 @@ contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
         _;
     }
 
-    /* ========== GOVERNANCE ========== */
-
+    /* ========== Governance and setup ========== */
+    // we initialize the board with all parameters
     function initialize(
         IERC20Upgradeable _IRICKS,
         address _WETH,
@@ -143,13 +143,11 @@ contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
     }
 
     function setWETHToken(address _WETHToken) public onlyOperator {
-        require(address(0) != _WETHToken, "Boardroom: Cannot set token to zero address");
+        require(address(0) != _WETHToken, "Boardroom: MADLAD");
         WETH = _WETHToken;
     }
 
-    /* ========== VIEW FUNCTIONS ========== */
-
-    // =========== Snapshot getters
+    /* ========== View functions ========== */
 
     function latestSnapshotIndex() public view returns (uint256) {
         return boardHistory.length.sub(1);
@@ -179,7 +177,6 @@ contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
         return IScheduledMinter(ScheduledMinter).nextEpochPoint();
     }
 
-    // =========== Director getters
 
     function rewardPerShare() public view returns (uint256) {
         return getLatestSnapshot().rewardPerShare;
@@ -192,17 +189,17 @@ contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
         return balanceOf(director).mul(latestRPS.sub(storedRPS)).div(1e18).add(directors[director].rewardEarned);
     }
 
-    /* ========== MUTATIVE FUNCTIONS ========== */
+    /* ========== Core Logic ========== */
 
     function stake(uint256 amount) public override nonReentrant updateReward(msg.sender) {
-        require(amount > 0, "Boardroom: Cannot stake 0");
+        require(amount > 0, "Stake 0 ? Ape!!");
         super.stake(amount);
         directors[msg.sender].epochTimerStart = IScheduledMinter(ScheduledMinter).epoch(); // reset timer
         emit Staked(msg.sender, amount);
     }
 
     function withdraw(uint256 amount) public override nonReentrant directorExists updateReward(msg.sender) {
-        require(amount > 0, "Boardroom: Cannot withdraw 0");
+        require(amount > 0, "Withdraw 0 ? Ape!!");
         address[] memory add;
         claimReward();
         super.withdraw(amount);

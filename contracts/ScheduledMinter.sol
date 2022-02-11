@@ -62,6 +62,7 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
     uint256 public initBid;
     uint256 public auctionDelay;
     
+    // auctions records
     struct Auctions{
         uint256 amountMinted;
         uint256 auctionId;
@@ -77,7 +78,7 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
 
 
     /* =================== Events =================== */
- 
+    //could implement more events, stayed minimalistic 
     event Initialized(address indexed executor, uint256 at);
     event BoardroomFunded(uint256 timestamp, uint256 seigniorage);
 
@@ -105,7 +106,7 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
         );
     }
 
-    /* ========== VIEW FUNCTIONS ========== */
+    /* ========== View Functions ========== */
 
 
     function isInitialized() public view returns (bool) {
@@ -118,7 +119,7 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
     }
 
 
-    /* ========== GOVERNANCE ========== */
+    /* ========== Governance ========== */
 
     function initialize(
         address _FRAC,
@@ -143,6 +144,8 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
         operator = msg.sender;
         emit Initialized(msg.sender, block.number);
     }
+
+    /* =================== Set Functions =================== */
 
     function setOperator(address _operator) external onlyOperator {
         operator = _operator;
@@ -179,6 +182,8 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
         emit BoardroomFunded(block.timestamp, _amount);
     }
 
+    /* =================== Some Other View Stuff =================== */
+
     function viewRICKS() public view returns (uint256) {
         uint256 bal = IERC20Upgradeable(RICKS).balanceOf(address(this));
         return(bal);
@@ -211,6 +216,8 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
         }
     }
 
+/* =================== Core Logic =================== */
+
     function mintAndAuction() public {
         Auctions storage a = auctions[epoch];
         // check if all conditions are met
@@ -240,16 +247,17 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
         b.isActive = true;
         b.delay = block.timestamp + auctionDelay;
         }
-
-        
     }
 
+    // anyone can bid, auction ends when no one bids
+    // time limit of auctionDelay (200 seconds) for tests, more reasonable at 1hour IMO
     function bid() public payable {
         Auctions storage a = auctions[epoch];
         require(msg.value >= a.currentBid, "Pay more awee");
         require(block.timestamp <= a.delay,  "Too late!");
         a.currentBid = msg.value;
-        //as well use erc20 later, convert now to ease transfers in boardroom
+        //as we will use erc20 later in the board, convert now to ease transfers
+        //we keep payable to make users life easy
         IWETH(WETH).deposit{value: msg.value}();
         uint256 wethbal = IERC20Upgradeable(WETH).balanceOf(address(this));
         a.wethRaised = wethbal;
@@ -257,8 +265,11 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
         a.lastBidder = msg.sender;
     }
 
-    // to be triggered with a script, check isAuctionEnded() for true or false
+    // to be triggered with a web3 script, check isAuctionEnded() for true or false
     // if true, operator can exec endAuction and distribute the shares accordingly
+    // also sends WETH to the boardroom that will be claimed by shareholders
+    // another alternative : imbric endAuction in the bid function with an if statement
+    // but consume more gas... TBD
     function endAuction() public onlyOperator {
         Auctions storage a = auctions[epoch];
         require(block.timestamp >= a.delay,  "Still on!");
@@ -267,7 +278,7 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
         allocateRICKSToBoardroom();
     }
 
-    function allocateRICKSToBoardroom() public onlyOperator {
+    function allocateRICKSToBoardroom() internal {
         checkOperator();
         Auctions storage a = auctions[epoch];
         require(a.wethRaised > 0,  "eeer");
@@ -281,19 +292,11 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
         IBoardroom(boardroom).setOperator(_operator);
     }
 
-    function boardroomSetLockUp(uint256 _withdrawLockupEpochs, uint256 _rewardLockupEpochs) external onlyOperator {
-        IBoardroom(boardroom).setLockUp(_withdrawLockupEpochs, _rewardLockupEpochs);
-    }
-
     function boardroomAllocateSeigniorage(uint256 amount) external onlyOperator {
         IBoardroom(boardroom).allocateSeigniorage(amount);
     }
 
-    function boardroomGovernanceRecoverUnsupported(
-        address _token,
-        uint256 _amount,
-        address _to
-    ) external onlyOperator {
+    function boardroomGovernanceRecoverUnsupported(address _token,uint256 _amount,address _to) external onlyOperator {
         IBoardroom(boardroom).governanceRecoverUnsupported(_token, _amount, _to);
     }
 
