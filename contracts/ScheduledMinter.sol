@@ -16,6 +16,14 @@ interface IFRAC {
     function _mintToScheduler(uint256 _amount) external;
 }
 
+interface IRICKS {
+function mintFrac(address _frac, uint256 _amount) external;
+function balanceOf(address account) external returns (uint256);
+function totalSupply() external returns (uint256);
+function transferFrom(address from,address to,uint256 amount) external returns (bool);
+function transfer(address to, uint256 amount) external returns (bool);
+}
+
 interface IWETH {
     function deposit() external payable;
     function transfer(address to, uint value) external returns (bool);
@@ -47,6 +55,7 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
 
     // tokens and board
     address public FRAC;
+    address public RICKS;
     address public unirouter;
     address public WETH;
     address public boardroom;
@@ -113,19 +122,22 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
 
     function initialize(
         address _FRAC,
+        address _RICKS,
         address _WETH,
         uint256 _startTime,
         address _NFT
     )  public {
         require(!initialized, "Initialized");
         FRAC = _FRAC;
+        RICKS = _RICKS;
         WETH = _WETH;
         NFT = _NFT;
         startTime = _startTime;
         epoch = 0;
         percent = 1;
         initBid = 0.1 ether;
-        auctionDelay = 100;
+        //delay set at 0 for testing purpose
+        auctionDelay = 200;
 
         initialized = true;
         operator = msg.sender;
@@ -155,19 +167,20 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
         percent = _percent;
     }
 
-    function setCoreAddresses(address _FRAC, address _WETH) external onlyOperator {
+    function setCoreAddresses(address _FRAC, address _WETH, address _RICKS) external onlyOperator {
         FRAC = _FRAC;
         WETH = _WETH;
+        RICKS = _RICKS;
     }
 
     function _sendToBoardRoom(uint256 _amount) internal {
-        IERC20Upgradeable(FRAC).safeApprove(boardroom, _amount);
+        IERC20Upgradeable(WETH).safeApprove(boardroom, _amount);
         IBoardroom(boardroom).allocateSeigniorage(_amount);
         emit BoardroomFunded(block.timestamp, _amount);
     }
 
-    function viewFRAC() public view returns (uint256) {
-        uint256 bal = IERC20Upgradeable(FRAC).balanceOf(address(this));
+    function viewRICKS() public view returns (uint256) {
+        uint256 bal = IERC20Upgradeable(RICKS).balanceOf(address(this));
         return(bal);
     }
 
@@ -233,7 +246,7 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
 
     function bid() public payable {
         Auctions storage a = auctions[epoch];
-        require(msg.value > a.currentBid, "Pay more awee");
+        require(msg.value >= a.currentBid, "Pay more awee");
         require(block.timestamp <= a.delay,  "Too late!");
         a.currentBid = msg.value;
         //as well use erc20 later, convert now to ease transfers in boardroom
@@ -248,13 +261,13 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
     // if true, operator can exec endAuction and distribute the shares accordingly
     function endAuction() public onlyOperator {
         Auctions storage a = auctions[epoch];
-        require(block.timestamp > a.delay,  "Still on!");
+        require(block.timestamp >= a.delay,  "Still on!");
         a.isActive = false;
-        IERC20Upgradeable(FRAC).transfer(a.lastBidder, a.amountMinted);
-        allocateFRACToBoardroom();
+        IERC20Upgradeable(RICKS).transfer(a.lastBidder, a.amountMinted);
+        allocateRICKSToBoardroom();
     }
 
-    function allocateFRACToBoardroom() public onlyOperator {
+    function allocateRICKSToBoardroom() public onlyOperator {
         checkOperator();
         Auctions storage a = auctions[epoch];
         require(a.wethRaised > 0,  "eeer");
@@ -270,10 +283,6 @@ contract ScheduledMinter is ReentrancyGuardUpgradeable {
 
     function boardroomSetLockUp(uint256 _withdrawLockupEpochs, uint256 _rewardLockupEpochs) external onlyOperator {
         IBoardroom(boardroom).setLockUp(_withdrawLockupEpochs, _rewardLockupEpochs);
-    }
-
-    function boardroomSetFRAC(address _FRAC) external onlyOperator {
-        IBoardroom(boardroom).setFRACToken(_FRAC);
     }
 
     function boardroomAllocateSeigniorage(uint256 amount) external onlyOperator {

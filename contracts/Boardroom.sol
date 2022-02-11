@@ -79,7 +79,6 @@ contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
     bool public initialized;
     address public unirouter;
     address public WETH;
-    address public FRAC;
     address public ScheduledMinter;
 
     mapping(address => Boardseat) public directors;
@@ -123,14 +122,12 @@ contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
     /* ========== GOVERNANCE ========== */
 
     function initialize(
-        IERC20Upgradeable _IWETH,
-        address _FRAC,
+        IERC20Upgradeable _IRICKS,
         address _WETH,
         address _ScheduledMinter
     ) public notInitialized {
-        FRAC = _FRAC;
-        share = _IWETH;
         WETH = _WETH;
+        share = _IRICKS;
         ScheduledMinter = _ScheduledMinter;
         BoardSnapshot memory genesisSnapshot = BoardSnapshot({time: block.number, rewardReceived: 0, rewardPerShare: 0});
         boardHistory.push(genesisSnapshot);
@@ -145,9 +142,9 @@ contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
         operator = _operator;
     }
 
-    function setFRACToken(address _FRACToken) public onlyOperator {
-        require(address(0) != _FRACToken, "Boardroom: Cannot set HyroToken to zero address");
-        FRAC = _FRACToken;
+    function setWETHToken(address _WETHToken) public onlyOperator {
+        require(address(0) != _WETHToken, "Boardroom: Cannot set token to zero address");
+        WETH = _WETHToken;
     }
 
     /* ========== VIEW FUNCTIONS ========== */
@@ -221,7 +218,7 @@ contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
         
         directors[msg.sender].epochTimerStart = IScheduledMinter(ScheduledMinter).epoch(); // reset timer
         directors[msg.sender].rewardEarned = 0;
-        IERC20Upgradeable(FRAC).safeTransfer(msg.sender, reward);
+        IERC20Upgradeable(WETH).safeTransfer(msg.sender, reward);
         emit RewardPaid(msg.sender, reward);
         
     }
@@ -237,19 +234,9 @@ contract Boardroom is ShareWrapper, ReentrancyGuardUpgradeable {
         BoardSnapshot memory newSnapshot = BoardSnapshot({time: block.number, rewardReceived: amount, rewardPerShare: nextRPS});
         boardHistory.push(newSnapshot);
 
-        IERC20Upgradeable(FRAC).safeTransferFrom(msg.sender, address(this), amount);
+        IERC20Upgradeable(WETH).safeTransferFrom(msg.sender, address(this), amount);
         emit RewardAdded(msg.sender, amount);
     }
 
-    function governanceRecoverUnsupported(
-        IERC20Upgradeable _token,
-        uint256 _amount,
-        address _to
-    ) external onlyOperator {
-        // do not allow to drain core tokens
-        require(address(_token) != address(FRAC), "FRAC");
-        require(address(_token) != address(WETH), "WETH");
-        _token.safeTransfer(_to, _amount);
-    }
 
 }
